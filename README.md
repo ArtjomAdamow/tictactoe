@@ -51,3 +51,8 @@ A computer player decides in this order:
 |------|---------|
 | `A_tictactoe.py` | the game |
 | `sim_scale.py` | random playouts that test the minimum board sizes (draw rate, wins per seat, mean moves) |
+
+## License
+
+MIT, in [LICENSE](LICENSE).
+Copyright (c) 2026 Artjom Adamow.
