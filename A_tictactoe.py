@@ -61,7 +61,7 @@ banner[:] = [rainbow(' Welcome to a new version of Tic-Tac-Toe! '),
              "Up to 12 players, human or computer.",
              "Scalable board and winning condition.",
              "Shuffled turns of players in every round."]
-board_title = rainbow(" Good luck, my Fennel-Kernels friends ! ")
+board_title = rainbow(" Good luck my friends ! ")
 
 def timer_bar(remaining):
     """
@@ -484,10 +484,10 @@ def board_lines():
     lines = [board_title, separator]
     symbol_filler = ' ' * x                                              # can use instead of ' ' for really large boards
     for row in range(y):
-        row_values = [board_dictionary[row * y + col + 1] for col in range(y)]  # todo: think that through
+        row_values = [board_dictionary[row * y + col + 1] for col in range(y)]
         centered_values = [val.center(width) for val in row_values]      # the numbers have no leading zeros, the cells keep their width
         colored_values = [paint(text, colors[val]) if val in colors else text for val, text in zip(row_values, centered_values)]   # every player has an own color
-        lines.append("| " + " | ".join(colored_values) + " |")                 # todo: study slicing print("example".join(row_values))
+        lines.append("| " + " | ".join(colored_values) + " |")
         lines.append(separator)
     return lines
 
@@ -511,13 +511,8 @@ def field_filler(field, symbol):
     """
         Inserts into the dictionary the symbol from last input
     """
-    if board_dictionary[field] not in symbols:
-        say("Excellent, '%s' put on field:" % paint(symbol, colors[symbol]), field)
-        board_dictionary[field] = symbol
-    else:
-        say("How sad, '%s' not put on field %d, because this field is used." % (symbol, field))
-        say("For now you cannot pick again, bad luck ...")                            # better times are ahead
-    return board_dictionary
+    say("Excellent, '%s' put on field:" % paint(symbol, colors[symbol]), field)
+    board_dictionary[field] = symbol
 
 def check_winner(check_name, check_symbol, board=None):
     """
@@ -661,11 +656,6 @@ def draw_checker(players, pending=None):
                 return ''                              # this player can still win
     return 'draw'
 
-
-# ... write as many functions as you need ...
-
-
-# Tic-tac-toe game
 if __name__ == "__main__":
     enable_ansi()
     running = ''
