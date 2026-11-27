@@ -13,6 +13,7 @@ Line ranges follow `tools/index.yaml` for `A_tictactoe.py`; `game.py` and `calib
 | `test_game.py` | scripted games for the turn engine (`python -m unittest test_game`), no server needed |
 | `sim_scale.py` | random playouts that test the minimum board sizes through `Game`; a test tool, not needed to start the game; uses `calibrate.play` |
 | `main.py` | placeholder, unused |
+| `Dockerfile`, `fly.toml`, `.dockerignore` | deployment to fly.io (see Deployment) |
 | `tools/index.py`, `tools/index.yaml`, `index.md` | the component index and its tool (not part of the game) |
 
 ## Game core (`game.py`)
@@ -116,6 +117,17 @@ board table in the player colors, number input for the queued move, "take over <
 - A stored token that the server no longer knows is sent once to `POST /join` (reconnect of a dropped human); if that fails the join form shows.
 - The "join as host / new game" choice after a pause: the host without a seat sees the take-over buttons and "New game" together.
 - Not done: no `sendBeacon` on tab close (the 5 s presence timeout drops the human, so a reload keeps the seat); no automated browser test.
+
+## Deployment (fly.io)
+
+`Dockerfile`: `python:3.14-slim`, dependencies from `pyproject.toml` and `uv.lock` through `uv sync --frozen --no-dev`, only `game.py`,
+`calibrate.py`, `server.py` and `static/` are copied. It starts `waitress-serve --factory --threads=8 server:create_app` on port 8080:
+one process, one worker (the state is in memory), 8 threads for the polling clients; the Flask development server stays for local `python server.py`.
+`fly.toml`: app `tictactoe` (rename if the name is taken), region `fra`, one `shared-cpu-1x` machine with 256 MB, `auto_stop_machines = "off"`,
+`auto_start_machines = false`, `min_machines_running = 1`, HTTPS forced, HTTP check `GET /`. Deploy with `fly launch --no-deploy --copy-config`,
+then `fly deploy --ha=false` (`--ha=false` keeps it at one machine; a second machine would have its own, separate state).
+Checked locally: waitress serves `/`, `/join` and `/state`. Not checked: the Docker build (no Docker here) and the 2 to 3 browser test on fly.io.
+The server does not use `calibrate.py` yet, so the volume for `simulations.json` is not needed for this deploy.
 
 ## Test tool
 

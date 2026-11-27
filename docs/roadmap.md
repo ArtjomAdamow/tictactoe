@@ -27,8 +27,6 @@ Run it as a single machine with a single worker, since the state is in memory. W
 
 ## Steps
 
-6. **Deploy to fly.io:** `Dockerfile`, `fly.toml` with one machine, no autostop (it would lose the state), one worker,
-   `pyproject.toml` gets `flask` and a production server (`gunicorn`, one worker with threads, or `waitress`). Check with 2 to 3 browsers.
 7. **Docs:** update `README.md` and `docs/architecture.md`.
 
 ## Keeping `simulations.json` safe
@@ -54,6 +52,5 @@ Order: 1 to 4 first, 5 to 7 when wanted. The store path moves into `calibrate.py
 ## Risks
 
 - A single in-memory process loses the game on every deploy or restart; acceptable for this app.
-- Free-tier machines may stop when idle; configure fly.io so that the machine stays running while a game exists.
 - Step 2 is now the largest change; scripted games without a server are the safety net, and `sim_scale.py` (same output before and after) guards the rules.
 - `game.messages` grows without a limit; the server must cap or drain it (the terminal client drains it).
