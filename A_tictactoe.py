@@ -15,7 +15,7 @@ SYMBOL_POOL = "#@%&*+$~^?!=<>ABCDEFGHJKLMNOPQRSTUVWXYZ"
 COLOR_DISTANCES = (220, 190, 160, 130, 100, 70)     # how different the players' colors should be at least, tried from the biggest down
 MAX_PLAYERS = 12
 MESSAGE_LINES = 6       # how many of the last messages stay on the screen
-TIMEOUT = 6             # seconds until an unanswered question takes its default
+TIMEOUT = None          # seconds until an unanswered question takes its default, None = no timeout, asked at the start
 GAMBLE_MIN = 0.1        # the smallest share of the gamble chance that stays even when blocking costs nothing
 RELIABILITY = {True: 0.9, False: 0.6}       # how likely a computer / a human blocks a threat for somebody else
 SCORE_EAGERNESS = 0.7   # how much a leader's score takes from the gamble chance, only for threats that wait for the next round
@@ -80,9 +80,9 @@ def timer_bar(remaining):
 def timed_input(prompt):
     """
         Like input(), but gives TIMED_OUT when nothing is typed for TIMEOUT seconds (every key restarts the time)
-        Without a terminal, e.g. in a pipe, it is a plain input()
+        Without a terminal, e.g. in a pipe, or without a TIMEOUT it is a plain input()
     """
-    if not sys.stdin.isatty():
+    if TIMEOUT is None or not sys.stdin.isatty():
         return input(prompt)
     sys.stdout.write(prompt)
     sys.stdout.flush()
@@ -660,6 +660,8 @@ if __name__ == "__main__":
     enable_ansi()
     running = ''
     board_set = False                                      # the board is asked for once, a revanche keeps it
+    TIMEOUT = ask_int("Type a number of seconds after which a choice is made automatically if you give no input, or hit <Enter> for no timeout: ", None, 1)
+    say("The automatic choice comes after %d seconds." % TIMEOUT if TIMEOUT else "There is no timeout.")
     rules = formula_setup()
     players, colors, computers = users_input(rules['n'])     # players: list of (name, symbol), colors: symbol -> color code
     symbols = [symbol for _, symbol in players]
