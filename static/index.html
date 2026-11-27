@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tic-Tac-Toe</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 1rem; background: #fafafa; color: #222; }
+  main { max-width: 56rem; margin: 0 auto; }
+  h1 { margin-top: 0; }
+  section { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: .8rem 1rem; margin-bottom: 1rem; }
+  h2 { font-size: 1rem; margin: 0 0 .5rem; }
+  label { margin-right: .8rem; white-space: nowrap; }
+  input { padding: .25rem; }
+  input[type=number] { width: 5rem; }
+  button { padding: .3rem .8rem; margin: .15rem .3rem .15rem 0; cursor: pointer; }
+  .hidden { display: none; }
+  .error { color: #b00020; min-height: 1.2em; }
+  .muted { color: #777; }
+  table.board { border-collapse: collapse; margin: .5rem 0; }
+  table.board td { border: 1px solid #bbb; width: 2.4rem; height: 2.4rem; text-align: center; font-weight: bold; padding: 0; }
+  table.board td.free { color: #aaa; font-weight: normal; font-size: .75rem; cursor: pointer; }
+  table.board td.free:hover { background: #eef; }
+  table.board td.queued { outline: 3px solid #36c; outline-offset: -3px; }
+  #messages { max-height: 11rem; overflow-y: auto; font-size: .9rem; }
+  #messages div { padding: 1px 0; }
+  .dot { display: inline-block; min-width: 1.6em; text-align: center; font-weight: bold; border-radius: 3px; color: #fff; padding: 0 .2em; }
+  .now { font-weight: bold; }
+  .scroll { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tic-Tac-Toe</h1>
+
+  <section id="join-box" class="hidden">
+    <h2>Join</h2>
+    <label>Name <input id="join-name" maxlength="20" autocomplete="off"></label>
+    <label>Symbol <input id="join-symbol" maxlength="2" size="3" autocomplete="off"></label>
+    <button id="join-button">Join</button>
+  </section>
+
+  <section id="lobby-box" class="hidden">
+    <h2>Players</h2>
+    <div id="people"></div>
+    <div id="profile" class="hidden">
+      <label>Name <input id="edit-name" maxlength="20" autocomplete="off"></label>
+      <label>Symbol <input id="edit-symbol" maxlength="2" size="3" autocomplete="off"></label>
+      <button id="edit-button">Change</button>
+    </div>
+  </section>
+
+  <section id="host-box" class="hidden">
+    <h2 id="host-title">Host</h2>
+    <p id="host-hint" class="muted hidden"></p>
+    <label>Extra computers <input id="set-computers" type="number" min="0" max="11" value="0"></label>
+    <label>Winning line z <input id="set-z" type="number" min="3" max="30" value="3"></label>
+    <label>Side <input id="set-side" type="number" min="3" max="30" placeholder="auto"></label>
+    <label>Seconds per move <input id="set-timeout" type="number" min="1" max="60" value="60"></label>
+    <div>
+      <button id="start-button">Start game</button>
+      <button id="new-button" class="hidden">New game</button>
+      <button id="revanche-button" class="hidden">Revanche</button>
+    </div>
+  </section>
+
+  <section id="game-box" class="hidden">
+    <h2 id="status"></h2>
+    <div id="scores"></div>
+    <div class="scroll"><table class="board" id="board"></table></div>
+    <div id="move-box" class="hidden">
+      <label>Your field <input id="field" type="number" min="1" autocomplete="off"></label>
+      <button id="send-button">Send</button>
+      <button id="clear-button">Clear</button>
+      <span id="queued" class="muted"></span>
+    </div>
+    <div id="claims"></div>
+  </section>
+
+  <section id="log-box" class="hidden">
+    <h2>Messages</h2>
+    <div id="messages"></div>
+  </section>
+
+  <div id="error" class="error"></div>
+  <button id="leave-button" class="hidden">Leave</button>
+</main>
+
+<script>
+"use strict";
+const COLORS = ["#d32f2f", "#1976d2", "#388e3c", "#f57c00", "#7b1fa2", "#00838f", "#c2185b", "#5d4037", "#455a64", "#827717", "#6a1b9a", "#ad1457"];
+const $ = id => document.getElementById(id);
+let token = localStorage.getItem("ttt-token") || null;
+let last = null;           // the last state
+let seenMessage = 0;       // highest message id on screen
+
+function show(id, on) { $(id).classList.toggle("hidden", !on); }
+
+function el(tag, text, attrs) {
+  const node = document.createElement(tag);
+  if (text !== undefined && text !== null) node.textContent = text;
+  Object.assign(node, attrs || {});
+  return node;
+}
+
+function showError(text) { $("error").textContent = text || ""; }
+
+async function call(path, body) {
+  try {
+    const answer = await fetch("/" + path, {
+      method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(Object.assign({token}, body || {})),
+    });
+    const data = await answer.json();
+    if (data.error) { showError(data.error); return null; }
+    showError("");
+    poll();
+    return data;
+  } catch (e) { showError("Server not reachable."); return null; }
+}
+
+async function poll() {
+  try {
+    const answer = await fetch("/state?token=" + encodeURIComponent(token || ""));
+    last = await answer.json();
+  } catch (e) { showError("Server not reachable."); return; }
+  render();
+}
+
+function chip(name, symbol, index) {
+  const span = el("span", symbol, {className: "dot", title: name});
+  span.style.background = COLORS[index % COLORS.length];
+  return span;
+}
+
+function render() {
+  const s = last, you = s.you, game = s.game;
+  if (token && !you) {                                  // dropped or server restarted: try to take the seat back once
+    const stored = token;
+    token = null;
+    localStorage.removeItem("ttt-token");
+    fetch("/join", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({token: stored})})
+      .then(r => r.json()).then(d => { if (d.token) { token = d.token; localStorage.setItem("ttt-token", token); } poll(); });
+    return;
+  }
+  show("join-box", !you);
+  show("lobby-box", !!you);
+  show("leave-button", !!you);
+  show("game-box", !!game);
+  show("log-box", true);
+  renderPeople();
+  renderHost();
+  if (game) renderGame();
+  renderMessages();
+}
+
+function renderPeople() {
+  const s = last, box = $("people");
+  box.replaceChildren();
+  s.people.forEach((p, i) => {
+    const line = el("div");
+    line.append(chip(p.name, p.symbol, i), " ", p.name);
+    if (p.host) line.append(" (host)");
+    if (p.seat) line.append(" - playing");
+    else if (s.game) line.append(" - watching");
+    if (s.you && p.name === s.you.name) line.append(" (you)");
+    box.append(line);
+  });
+  const editable = s.you && !s.you.seat;
+  show("profile", editable);
+  if (editable && document.activeElement !== $("edit-name") && document.activeElement !== $("edit-symbol")) {
+    if (!$("edit-name").value) $("edit-name").value = s.you.name;
+    if (!$("edit-symbol").value) $("edit-symbol").value = s.you.symbol;
+  }
+}
+
+function renderHost() {
+  const s = last, game = s.game, host = s.you && s.you.host;
+  show("host-box", !!host);
+  if (!host) return;
+  const running = !!game;
+  const choice = running && !s.you.seat && game.players.some(p => p.computer);      // joined as host to a running game
+  show("start-button", !running);
+  show("new-button", running);
+  show("revanche-button", running && game.state === "over");
+  $("host-title").textContent = running ? "Host: new game" : "Host: start the game";
+  $("host-hint").textContent = choice ? "You can take over a computer seat below, or start a new game here." : "";
+  show("host-hint", choice);
+  for (const [id, value] of [["set-computers", s.setup.computers], ["set-z", s.setup.z], ["set-side", s.setup.side]]) {
+    const input = $(id);
+    if (document.activeElement !== input && !input.dataset.touched) input.value = value === null ? "" : value;
+  }
+}
+
+function renderGame() {
+  const s = last, game = s.game, you = s.you;
+  const index = Object.fromEntries(game.players.map((p, i) => [p.name, i]));
+  const symbols = new Set(game.players.map(p => p.symbol));
+  const mover = game.order[game.turn];
+  let status = {playing: "Playing", paused: "Paused: waiting for a human in the lobby", over: "Game over", lobby: "Lobby"}[game.state];
+  if (game.state === "over") status = game.result === "draw" ? "Draw." : game.result + " wins.";
+  if (game.state === "playing") {
+    status = "Turn: " + mover + (game.time_left === null ? "" : " (" + Math.ceil(game.time_left) + " s)");
+    if (you && you.seat === mover) status += " - your turn";
+  }
+  $("status").textContent = status;
+
+  const scores = $("scores");
+  scores.replaceChildren();
+  game.players.forEach((p, i) => {
+    const line = el("div");
+    if (game.state === "playing" && p.name === mover) line.className = "now";
+    line.append(chip(p.name, p.symbol, i), " " + p.name + (p.computer ? " (computer)" : "") + (p.afk ? " (AFK)" : "") + ": " + p.score);
+    if (game.queue[p.name] !== undefined) line.append(" - queued field " + game.queue[p.name]);
+    scores.append(line);
+  });
+  scores.append(el("div", "Draws: " + game.draws, {className: "muted"}));
+
+  const mine = you && you.seat ? game.queue[you.seat] : undefined;
+  const board = $("board");
+  board.replaceChildren();
+  for (let row = 0; row < game.side; row++) {
+    const tr = el("tr");
+    for (let col = 0; col < game.side; col++) {
+      const field = row * game.side + col + 1;
+      const value = game.board[String(field)];
+      const td = el("td", value);
+      if (symbols.has(value)) {
+        const owner = game.players.findIndex(p => p.symbol === value);
+        td.style.color = COLORS[owner % COLORS.length];
+      } else {
+        td.className = "free";
+        td.onclick = () => { $("field").value = field; sendField(); };
+      }
+      if (field === mine) td.classList.add("queued");
+      tr.append(td);
+    }
+    board.append(tr);
+  }
+
+  const seated = !!(you && you.seat && !game.players.find(p => p.name === you.seat && p.computer));
+  show("move-box", seated && game.state !== "over");
+  $("field").max = game.side * game.side;
+  $("queued").textContent = mine === undefined ? "No move queued." : "Queued: field " + mine;
+
+  const claims = $("claims");
+  claims.replaceChildren();
+  if (you && !you.seat) {
+    game.players.filter(p => p.computer).forEach(p => {
+      const button = el("button", "Take over " + p.name + " (" + p.symbol + ")");
+      button.onclick = () => call("claim", {seat: p.name});
+      claims.append(button);
+    });
+  }
+}
+
+function renderMessages() {
+  const box = $("messages");
+  const fresh = last.messages.filter(m => m.id > seenMessage);
+  if (!fresh.length) return;
+  const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 4;
+  for (const m of fresh) { box.append(el("div", m.text)); seenMessage = m.id; }
+  while (box.children.length > 100) box.firstChild.remove();
+  if (stick) box.scrollTop = box.scrollHeight;
+}
+
+async function sendField() {
+  const value = $("field").value.trim();
+  if (value === "") return;
+  if (await call("queue", {field: Number(value)})) $("field").value = "";
+}
+
+function setup() {
+  const body = {
+    computers: $("set-computers").value, z: $("set-z").value, side: $("set-side").value, timeout: $("set-timeout").value,
+  };
+  return body;
+}
+
+$("join-button").onclick = async () => {
+  const data = await call("join", {name: $("join-name").value, symbol: $("join-symbol").value});
+  if (data) { token = data.token; localStorage.setItem("ttt-token", token); poll(); }
+};
+$("edit-button").onclick = () => call("join", {name: $("edit-name").value, symbol: $("edit-symbol").value});
+$("start-button").onclick = () => call("start", setup());
+$("new-button").onclick = () => call("start", Object.assign(setup(), {new: true}));
+$("revanche-button").onclick = () => call("revanche");
+$("send-button").onclick = sendField;
+$("clear-button").onclick = () => call("queue", {field: null});
+$("field").addEventListener("keydown", e => { if (e.key === "Enter") sendField(); });
+$("leave-button").onclick = async () => {
+  await call("leave");
+  token = null;
+  localStorage.removeItem("ttt-token");
+  poll();
+};
+for (const id of ["set-computers", "set-z", "set-side", "set-timeout"]) $(id).addEventListener("input", () => { $(id).dataset.touched = "1"; });
+for (const id of ["join-name", "join-symbol"]) $(id).addEventListener("keydown", e => { if (e.key === "Enter") $("join-button").click(); });
+
+poll();
+setInterval(poll, 1000);
+</script>
+</body>
+</html>
