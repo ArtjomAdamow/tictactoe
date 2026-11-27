@@ -3,6 +3,7 @@
     Every finished side is stored in simulations.json, a stored side is never simulated again
     No input or output: the client gives a progress function and shows the bar itself
 """
+import hmac
 import json
 import logging
 import os
@@ -75,9 +76,27 @@ def clean(data):
             logging.warning("simulations: dropped entry %r", key)
     return good
 
+def sign(data):
+    """
+        HMAC-SHA256 of the data with the secret SIM_KEY (fly secrets set SIM_KEY=...), or None without a key
+    """
+    key = os.environ.get('SIM_KEY')
+    if not key:
+        return None
+    text = json.dumps(data, sort_keys=True, separators=(',', ':'))
+    return hmac.new(key.encode(), text.encode(), 'sha256').hexdigest()
+
 def load(store=STORE):
     try:
-        return clean(json.loads(Path(store).read_text(encoding='utf-8')))
+        content = json.loads(Path(store).read_text(encoding='utf-8'))
+        if sign({}) is not None:
+            data = content.get('data') if isinstance(content, dict) else None
+            expected = sign(data) if isinstance(data, dict) else ''
+            if not hmac.compare_digest(str(content.get('hmac') if data is not None else ''), expected):
+                logging.warning("simulations: bad or missing HMAC in %s, ignored", store)
+                return {}
+            content = data
+        return clean(content)
     except FileNotFoundError:
         return {}
     except (OSError, ValueError):
@@ -87,11 +106,15 @@ def load(store=STORE):
 def save(data, store=STORE):
     """
         Validated, written to a temp file in the same folder, then replaced under a lock, so a crash leaves no half-written file
+        With SIM_KEY the file is {"hmac": ..., "data": {...}}
     """
     store = Path(store)
+    data = clean(data)
+    signature = sign(data)
+    content = data if signature is None else {'hmac': signature, 'data': data}
     with LOCK:
         temporary = store.with_suffix('.tmp')
-        temporary.write_text(json.dumps(clean(data), indent=1, sort_keys=True), encoding='utf-8')
+        temporary.write_text(json.dumps(content, indent=1, sort_keys=True), encoding='utf-8')
         os.replace(temporary, store)
 
 def recommend(n, z, progress=None, store=STORE):

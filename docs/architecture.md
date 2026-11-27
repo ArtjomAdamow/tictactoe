@@ -60,7 +60,8 @@ plays `GAMES` (200) random games per side, small sides first, and stops at the f
 `simulations.json` (`"n,z,side": {games, draws}`), `load` and `save`; stored sides are never simulated again.
 The path is `STORE`, from the env var `SIM_STORE` (default `simulations.json` next to the file). `valid_entry`/`clean` check the entries
 (`2 <= n <= MAX_PLAYERS`, `3 <= z <= side <= MAX_SIDE`, `0 <= draws <= games <= GAMES`) on load and save, drop and log the rest; `save` writes
-a temp file and `os.replace`s it under `LOCK`.
+a temp file and `os.replace`s it under `LOCK`. With the env var `SIM_KEY`, `sign` makes an HMAC-SHA256 and the file is `{"hmac", "data"}`;
+`load` ignores a file whose HMAC does not match.
 `progress(done, total, elapsed)` is called before every game and returns `False` to cancel (result `None`, finished sides stay
 stored). It returns `(side, True if all data came from the store)`.
 
