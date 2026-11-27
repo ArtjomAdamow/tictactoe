@@ -6,3 +6,5 @@ tools
 index.md
 simulations.json
 test_*.py
+simulations.bak
+simulations.tmp

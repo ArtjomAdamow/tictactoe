@@ -8,14 +8,17 @@ Run it as a single machine with a single worker, since the state is in memory. W
 ## Keeping `simulations.json` safe
 
 Goal: the file grows while the game is used, survives restarts and deploys, is written only by the game, and collects nothing from the internet.
-Not built yet; the server does not use `calibrate.py` today, so do it when it starts to.
 
 Done in code (`calibrate.py`): step 2 (only `calibrate.play` results are stored; no route touches the file), step 3 (`valid_entry`, `clean`; `MAX_SIDE`
 moved to `game.py`), step 4 (`save` writes a temp file under `LOCK`, then `os.replace`), and the `SIM_STORE` env var of step 1.
 Step 5 is done too: with the env var `SIM_KEY` set (`fly secrets set SIM_KEY=...`), `save` writes `{"hmac", "data"}` and `load` ignores a file with a
-bad or missing HMAC (logged; the sides are simulated again). Without `SIM_KEY` the file stays plain. Steps 6 and 7 are open.
-Still open: the fly.io side of step 1 (`fly volumes create`, a `[mounts]` block in `fly.toml`, `SIM_STORE=/data/simulations.json`), done only when
-the server starts to use `calibrate.py`: a mount without the volume would fail the deploy.
+bad or missing HMAC (logged; the sides are simulated again). Without `SIM_KEY` the file stays plain.
+Steps 6 and 7 are done: `clean` keeps at most `MAX_ENTRIES` (1000) entries, and `save` copies the old file to `simulations.bak` before each replace.
+Not code: a Fly volume snapshot (`fly volumes snapshots`) for step 7.
+Done in server and config: `Server.auto_side` (an empty side in `POST /start`) uses the stored `calibrate.recommend` result, else the formula and
+a background thread (`simulate_side`) fills the store for the next game; `fly.toml` has the `[mounts]` block (volume `simdata` at `/data`) and
+`SIM_STORE`. Before the next push to `main`: `fly volumes create simdata --region fra --size 1`, else the deploy fails. `SIM_KEY` stays optional.
+Still open (Fly commands, not code): the volume itself and a snapshot schedule (`fly volumes snapshots`).
 
 1. **Persistent volume on fly.io:** create a volume, mount it at `/data`, store the file at `/data/simulations.json`. The path comes from an
    env var (default `simulations.json` for local use). Volumes survive restarts and deploys. The file is not in the image and not in git

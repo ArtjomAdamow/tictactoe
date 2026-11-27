@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import random
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -16,6 +17,7 @@ from game import MAX_PLAYERS, MAX_SIDE, Game, min_side
 
 STORE = Path(os.environ.get('SIM_STORE') or Path(__file__).with_name('simulations.json'))    # on fly.io: /data/simulations.json
 GAMES = 200             # random games per side
+MAX_ENTRIES = 1000      # hard cap on the stored sides, the real key space is far smaller
 LOCK = threading.Lock()
 TARGET_DRAW = 0.2       # the smallest side whose draw rate in random games is at most this is recommended
 
@@ -70,10 +72,12 @@ def clean(data):
         return {}
     good = {}
     for key, value in data.items():
-        if valid_entry(key, value):
-            good[key] = value
-        else:
+        if not valid_entry(key, value):
             logging.warning("simulations: dropped entry %r", key)
+        elif len(good) >= MAX_ENTRIES:
+            logging.warning("simulations: dropped entry %r, more than %d entries", key, MAX_ENTRIES)
+        else:
+            good[key] = value
     return good
 
 def sign(data):
@@ -115,6 +119,8 @@ def save(data, store=STORE):
     with LOCK:
         temporary = store.with_suffix('.tmp')
         temporary.write_text(json.dumps(content, indent=1, sort_keys=True), encoding='utf-8')
+        if store.exists():
+            shutil.copyfile(store, store.with_suffix('.bak'))
         os.replace(temporary, store)
 
 def recommend(n, z, progress=None, store=STORE):

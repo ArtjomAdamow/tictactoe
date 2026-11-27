@@ -61,7 +61,7 @@ plays `GAMES` (200) random games per side, small sides first, and stops at the f
 The path is `STORE`, from the env var `SIM_STORE` (default `simulations.json` next to the file). `valid_entry`/`clean` check the entries
 (`2 <= n <= MAX_PLAYERS`, `3 <= z <= side <= MAX_SIDE`, `0 <= draws <= games <= GAMES`) on load and save, drop and log the rest; `save` writes
 a temp file and `os.replace`s it under `LOCK`. With the env var `SIM_KEY`, `sign` makes an HMAC-SHA256 and the file is `{"hmac", "data"}`;
-`load` ignores a file whose HMAC does not match.
+`load` ignores a file whose HMAC does not match. `clean` keeps at most `MAX_ENTRIES` (1000); `save` copies the old file to `.bak` before the replace.
 `progress(done, total, elapsed)` is called before every game and returns `False` to cancel (result `None`, finished sides stay
 stored). It returns `(side, True if all data came from the store)`.
 
@@ -96,7 +96,7 @@ All requests run under one lock, `create_app(clock, loop)` registers them; `loop
 | Request | Who | Effect |
 |---------|-----|--------|
 | `POST /join` `{name, symbol[, token]}` | anyone | returns a token; the first is host; with a token it edits name and symbol (before the game); resumes a paused game; the token of a dropped human takes their seat back while it is still a computer (name and symbol from `dropped`) |
-| `POST /start` `{token[, computers, z, side, timeout, new]}` | host | first game from all joined humans plus `computers`; `new: true` replaces a running or paused game |
+| `POST /start` `{token[, computers, z, side, timeout, new]}` | host | first game from all joined humans plus `computers`; `new: true` replaces a running or paused game; an empty `side` stays automatic (`setup.side` is `null`) and is chosen by `Server.auto_side` at every start, its result may be below the formula (stored `calibrate.recommend` result, else the formula while a background thread simulates for next time) |
 | `POST /claim` `{token, seat}` | watcher | takes a computer seat with their own name and symbol (`Game.take_over`) |
 | `POST /queue` `{token, field}` | seated human | queued move (`null` clears) |
 | `POST /leave` `{token}` | anyone | `drop`: the seat becomes a computer, the host moves on, nobody left pauses the game; the body is read as JSON whatever the content type, so `navigator.sendBeacon` on tab close works |
@@ -154,7 +154,8 @@ Checked on the live app: `GET /`, `POST /join`, `GET /state`, `POST /leave`, and
 (a computer seat taken over mid-game) and the seat returning to a computer when that human left.
 `.github/workflows/fly-deploy.yml` (made by `fly launch`) deploys with `flyctl deploy --remote-only` on every push to `main`; it needs the
 repository secret `FLY_API_TOKEN` (`fly tokens create deploy`). Every deploy restarts the machine, so a running game is lost; push when nobody plays.
-The server does not use `calibrate.py` yet, so the volume for `simulations.json` is not needed for this deploy.
+The server uses `calibrate.py` (the volume `simdata` is mounted at `/data`, `SIM_STORE=/data/simulations.json` in `fly.toml`). The volume must exist
+(`fly volumes create simdata --region fra --size 1`) before the deploy, or the machine does not start.
 
 ## Test tool
 

@@ -8,6 +8,7 @@ import time
 
 from flask import Flask, jsonify, request
 
+import calibrate
 from game import MAX_PLAYERS, MAX_SIDE, SYMBOL_POOL, Game, min_side
 
 COMPUTER_DELAY = 0.7    # seconds between two moves of computer players
@@ -33,11 +34,13 @@ class Server:
             seen is the time of the last request
         dropped: token -> {'name', 'symbol', 'seat'} of seated humans who are gone, so that they can take the seat back
         host: the token of the host (the first human in line), None if nobody is there
-        setup: what the host chose for the next game (computers, z, side)
+        setup: what the host chose for the next game (computers, z, side; side None means automatic)
     """
 
-    def __init__(self, clock=time.monotonic):
+    def __init__(self, clock=time.monotonic, simulate=False):
         self.clock = clock
+        self.simulate = simulate            # use calibrate for an automatic side; off in the tests
+        self.simulating = set()             # (n, z) with a simulation running in the background
         self.lock = threading.Lock()
         self.people = {}
         self.dropped = {}
@@ -171,6 +174,31 @@ class Server:
         self.changed()
         return {'token': token}
 
+    def auto_side(self, n, z):
+        """
+            The side for an automatic choice: the recommendation of calibrate if its data is stored, else the formula,
+            and the missing data is simulated in the background for the next game
+        """
+        base = min_side(n, z)
+        if not self.simulate:
+            return base
+        found = calibrate.recommend(n, z, lambda *args: False)
+        if found:
+            return min(max(found[0], z), MAX_SIDE)
+        if (n, z) not in self.simulating:
+            self.simulating.add((n, z))
+            threading.Thread(target=self.simulate_side, args=(n, z), daemon=True).start()
+        return base
+
+    def simulate_side(self, n, z):
+        """
+            Runs in its own thread: fills the store of calibrate; the pause per game keeps the game server responsive
+        """
+        try:
+            calibrate.recommend(n, z, lambda *args: time.sleep(0.001) or True)
+        finally:
+            self.simulating.discard((n, z))
+
     def start(self, data):
         """
             The host starts the first game, or a new game that replaces the current one (new: true), from everybody who is joined
@@ -193,10 +221,10 @@ class Server:
             raise Refused("2 to %d players are needed" % MAX_PLAYERS)
         if z < 3:
             raise Refused("z must be at least 3")
-        side = min_side(n, z) if side is None else side
-        if side < min_side(n, z) or side > MAX_SIDE:
+        if side is not None and (side < min_side(n, z) or side > MAX_SIDE):
             raise Refused("side must be from %d to %d" % (min_side(n, z), MAX_SIDE))
-        self.setup = {'computers': computers, 'z': z, 'side': side}
+        self.setup = {'computers': computers, 'z': z, 'side': side}      # None stays automatic for the next game
+        side = self.auto_side(n, z) if side is None else side
         players = [(p['name'], p['symbol']) for _, p in humans]
         names = {name for name, _ in players}
         free_symbols = [s for s in SYMBOL_POOL if s not in {symbol for _, symbol in players}]
@@ -325,7 +353,7 @@ class Server:
 
 def create_app(clock=time.monotonic, loop=True):
     app = Flask(__name__, static_folder='static', static_url_path='')
-    server = Server(clock)
+    server = Server(clock, simulate=loop)
     app.server = server
 
     def handler(method):

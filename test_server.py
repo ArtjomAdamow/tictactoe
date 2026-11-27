@@ -3,7 +3,9 @@
 """
 import random
 import unittest
+from unittest import mock
 
+import calibrate
 import server
 
 
@@ -208,6 +210,42 @@ class AutoStart(Api):
         self.assertEqual(self.srv.game.state, 'paused')
         self.run_ticks(50)
         self.assertEqual(self.srv.game.state, 'paused')
+
+
+class AutoSide(Api):
+    def setUp(self):
+        super().setUp()
+        self.srv.simulate = True
+
+    def test_stored_recommendation_is_used(self):
+        with mock.patch.object(calibrate, 'recommend', return_value=(7, True)):
+            self.assertEqual(self.srv.auto_side(2, 3), 7)
+
+    def test_recommendation_stays_inside_the_limits(self):
+        with mock.patch.object(calibrate, 'recommend', return_value=(99, True)):
+            self.assertEqual(self.srv.auto_side(2, 3), server.MAX_SIDE)
+
+    def test_missing_data_uses_the_formula_and_simulates_once(self):
+        with mock.patch.object(calibrate, 'recommend', return_value=None),                 mock.patch.object(server.threading, 'Thread') as thread:
+            self.assertEqual(self.srv.auto_side(2, 3), server.min_side(2, 3))
+            self.assertEqual(self.srv.auto_side(2, 3), server.min_side(2, 3))
+            self.assertEqual(thread.call_count, 1)
+
+    def test_auto_side_sticks_and_may_be_below_the_formula(self):
+        a = self.join('Ann', 'X')
+        with mock.patch.object(calibrate, 'recommend', return_value=(3, True)):
+            self.assertEqual(self.post('start', token=a, computers=3, z=3, side='').status_code, 200)
+            self.assertEqual(self.srv.game.side, 3)
+            self.assertLess(self.srv.game.side, server.min_side(4, 3))
+            self.assertIsNone(self.state(a)['setup']['side'])
+            self.assertEqual(self.post('start', token=a, new=True).status_code, 200)
+            self.assertIsNone(self.state(a)['setup']['side'])
+
+    def test_tests_never_simulate(self):
+        self.srv.simulate = False
+        with mock.patch.object(calibrate, 'recommend') as recommend:
+            self.assertEqual(self.srv.auto_side(2, 3), server.min_side(2, 3))
+            recommend.assert_not_called()
 
 
 if __name__ == '__main__':
