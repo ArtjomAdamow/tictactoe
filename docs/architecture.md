@@ -1,6 +1,6 @@
 # Architecture (what exists today)
 
-A terminal game on top of a game core, plus a test script. Standard library only, Python 3.14.
+A game core with two clients (a terminal game and a browser game served by a Flask server), plus tests. Python 3.14; the core and the terminal client use the standard library only.
 Line ranges follow `tools/index.yaml` for `A_tictactoe.py`; `game.py` and `calibrate.py` are not in the index yet, so their lines are read from the files.
 
 ## Files
@@ -12,8 +12,10 @@ Line ranges follow `tools/index.yaml` for `A_tictactoe.py`; `game.py` and `calib
 | `A_tictactoe.py` | the terminal client: screen, timed input, setup, main loop; imports `game.py` |
 | `test_game.py` | scripted games for the turn engine (`python -m unittest test_game`), no server needed |
 | `sim_scale.py` | random playouts that test the minimum board sizes through `Game`; a test tool, not needed to start the game; uses `calibrate.play` |
+| `server.py`, `static/index.html` | the web server and the browser client (see below) |
+| `test_server.py` | scripted requests against the server with a fake clock, no network |
 | `main.py` | placeholder, unused |
-| `Dockerfile`, `fly.toml`, `.dockerignore` | deployment to fly.io (see Deployment) |
+| `Dockerfile`, `fly.toml`, `.dockerignore`, `.github/workflows/fly-deploy.yml` | deployment to fly.io (see Deployment) |
 | `tools/index.py`, `tools/index.yaml`, `index.md` | the component index and its tool (not part of the game) |
 
 ## Game core (`game.py`)
@@ -105,6 +107,23 @@ Presence: every request with a token and `GET /state` set `seen`; `tick()` drops
 with `drop`, the same as `/leave`. A reconnecting token gets no host role back. `dropped` is cleared when `new: true` replaces the game.
 Clients must poll `/state` with their token (about once per second) to stay present.
 
+### Session rules (accepted decisions)
+
+- **Roles:** the first user to join is the host and sets up the game; if the host drops out, the next human in line becomes host.
+- **Lobby:** players see each other, everybody can edit name and symbol, the host starts. Players = all joined humans plus the extra computers the host sets.
+- **Running game:** a joining human can take over any computer seat with their own name and symbol.
+- **Queued move:** every human can send a field at any time; it is placed when their turn comes if the field is free, otherwise the server
+  clears it as soon as the field is taken. The client shows the queue from the server state.
+- **Timeout:** at most 60 s per move, also the default, never no timer. When it runs out the computer logic makes the move ("The party moves on, the
+  computer made your move."), the human is AFK ("Player x seems to be AFK.") and the computer moves for them at once until they act again;
+  one still AFK at the revanche counts as dropped out.
+- **Dropout:** the seat becomes a computer at once, message "Player x dropped out, the computer took over." (`Game.to_computer`).
+- **Reconnect:** a token in `localStorage` lets a dropped human take their seat back, as long as the computer that took over still has it.
+- **Revanche:** the host restarts with the same setup; dropouts stay computers. If a finished game has no human seat left (only computers, or the last
+  human dropped out) and somebody is in the lobby, the next game starts by itself after the computer delay; with nobody in the lobby the game stays paused.
+- **Last human drops out:** the game pauses but stays in memory and runs again while a human is in the lobby. That human can watch; the first one
+  to join chooses between joining the current game as host or starting a new one.
+
 ## Browser client (`static/index.html`)
 
 One file, vanilla JS, served by `GET /` (`index` in `server.py`). Not in `tools/index.yaml` (no Python).
@@ -120,13 +139,17 @@ board table in the player colors, number input for the queued move, "take over <
 
 ## Deployment (fly.io)
 
-`Dockerfile`: `python:3.14-slim`, dependencies from `pyproject.toml` and `uv.lock` through `uv sync --frozen --no-dev`, only `game.py`,
-`calibrate.py`, `server.py` and `static/` are copied. It starts `waitress-serve --factory --threads=8 server:create_app` on port 8080:
+`Dockerfile`: `python:3.14-slim`, `flask` and `waitress` from PyPI through `pip install` (same bounds as `pyproject.toml`; no `uv` image from ghcr.io, which stalled the build), only `game.py`,
+`calibrate.py`, `server.py` and `static/` are copied. It starts `waitress-serve --threads=8 --call server:create_app` on port 8080:
 one process, one worker (the state is in memory), 8 threads for the polling clients; the Flask development server stays for local `python server.py`.
-`fly.toml`: app `tictactoe` (rename if the name is taken), region `fra`, one `shared-cpu-1x` machine with 256 MB, `auto_stop_machines = "off"`,
+`fly.toml`: app `tictactoe-fennel-kernels` (the name Fly gave it; public at `https://tictactoe-fennel-kernels.fly.dev/`), region `fra`, one `shared-cpu-1x` machine with 256 MB, `auto_stop_machines = "off"`,
 `auto_start_machines = false`, `min_machines_running = 1`, HTTPS forced, HTTP check `GET /`. Deploy with `fly launch --no-deploy --copy-config`,
 then `fly deploy --ha=false` (`--ha=false` keeps it at one machine; a second machine would have its own, separate state).
-Checked locally: waitress serves `/`, `/join` and `/state`. Not checked: the Docker build (no Docker here) and the 2 to 3 browser test on fly.io.
+`waitress-serve` has no `--factory` option, the app factory is started with `--call`; a wrong option crashes the machine at start (it showed as a 503).
+Checked on the live app: `GET /`, `POST /join`, `GET /state`, `POST /leave`, and a full round with a human and computers, including `POST /claim`
+(a computer seat taken over mid-game) and the seat returning to a computer when that human left.
+`.github/workflows/fly-deploy.yml` (made by `fly launch`) deploys with `flyctl deploy --remote-only` on every push to `main`; it needs the
+repository secret `FLY_API_TOKEN` (`fly tokens create deploy`). Every deploy restarts the machine, so a running game is lost; push when nobody plays.
 The server does not use `calibrate.py` yet, so the volume for `simulations.json` is not needed for this deploy.
 
 ## Test tool

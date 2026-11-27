@@ -1,7 +1,7 @@
 # Tic-Tac-Toe
 
-A not so simple game of Tic-Tac-Toe for the terminal: up to 12 players, human or computer, on a board of any size with a
-scalable winning condition. Standard library only.
+A not so simple game of Tic-Tac-Toe: up to 12 players, human or computer, on a board of any size with a
+scalable winning condition. Play it in the terminal (standard library only) or with friends in the browser.
 
 ## Run
 
@@ -11,6 +11,26 @@ python A_tictactoe.py
 
 Needs Python 3.14 (see `pyproject.toml`) and a terminal with ANSI colors (the Windows console is switched on by the game).
 `main.py` is only a placeholder.
+
+### In the browser (multiplayer)
+
+```bash
+pip install flask waitress      # or: uv sync
+python server.py                # http://localhost:8080
+```
+
+One game session for up to 12 humans, served by one Python process with the state in memory; the page (`static/index.html`) polls the
+server about once a second. It also runs live on fly.io (see [Deployment](docs/architecture.md#deployment-flyio)).
+
+- The first person to join is the host: they choose the number of extra computers, `z`, side and timeout, and start the game, the
+  revanche or a new game. Everybody in the lobby can change their name and symbol.
+- Moves: type a field number or click a free field at any time. It is queued and placed when your turn comes, if the field is
+  still free. At most 60 s per move; after that the computer moves for you and you count as AFK until you act again.
+- Joining a running game: take over any computer seat with your own name and symbol.
+- Leaving or losing the connection (5 s without a request) turns your seat into a computer. The token in `localStorage` lets
+  you take the seat back while the computer still has it. If the host leaves, the next human becomes host; if the last human
+  leaves, the game pauses and waits for the next one.
+- Tests: `python -m unittest test_game test_server`.
 
 ## How it works
 
@@ -49,8 +69,14 @@ A computer player decides in this order:
 
 | File | Purpose |
 |------|---------|
-| `A_tictactoe.py` | the game |
+| `A_tictactoe.py` | the terminal game |
+| `game.py` | the game core: rules, turn engine, computer player (no input or output) |
+| `calibrate.py` | optional board-size recommendation by random playouts, stored in `simulations.json` |
+| `server.py`, `static/index.html` | the web server (Flask, waitress) and the browser client |
+| `test_game.py`, `test_server.py` | scripted tests without a real network |
 | `sim_scale.py` | random playouts that test the minimum board sizes (draw rate, wins per seat, mean moves) |
+| `Dockerfile`, `fly.toml`, `.github/workflows/fly-deploy.yml` | deployment to fly.io |
+| `docs/architecture.md`, `docs/roadmap.md` | how it is built, and what is still open |
 
 ## License
 
