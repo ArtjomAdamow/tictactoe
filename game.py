@@ -9,6 +9,7 @@ from functools import lru_cache
 
 SYMBOL_POOL = "#@%&*+$~^?!=<>ABCDEFGHJKLMNOPQRSTUVWXYZ"
 MAX_PLAYERS = 12
+MAX_SIDE = 30           # the largest board side the web server accepts, also the limit for stored simulations
 MAX_TIMEOUT = 60        # seconds, the longest a human may take for a move in the turn engine, also the default
 GAMBLE_MIN = 0.1        # the smallest share of the gamble chance that stays even when blocking costs nothing
 RELIABILITY = {True: 0.9, False: 0.6}       # how likely a computer / a human blocks a threat for somebody else

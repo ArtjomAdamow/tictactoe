@@ -10,6 +10,11 @@ Run it as a single machine with a single worker, since the state is in memory. W
 Goal: the file grows while the game is used, survives restarts and deploys, is written only by the game, and collects nothing from the internet.
 Not built yet; the server does not use `calibrate.py` today, so do it when it starts to.
 
+Done in code (`calibrate.py`): step 2 (only `calibrate.play` results are stored; no route touches the file), step 3 (`valid_entry`, `clean`; `MAX_SIDE`
+moved to `game.py`), step 4 (`save` writes a temp file under `LOCK`, then `os.replace`), and the `SIM_STORE` env var of step 1.
+Still open: the fly.io side of step 1 (`fly volumes create`, a `[mounts]` block in `fly.toml`, `SIM_STORE=/data/simulations.json`), done only when
+the server starts to use `calibrate.py`: a mount without the volume would fail the deploy.
+
 1. **Persistent volume on fly.io:** create a volume, mount it at `/data`, store the file at `/data/simulations.json`. The path comes from an
    env var (default `simulations.json` for local use). Volumes survive restarts and deploys. The file is not in the image and not in git
    (`simulations.json` is in `.gitignore`).

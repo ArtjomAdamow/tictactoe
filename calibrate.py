@@ -4,14 +4,18 @@
     No input or output: the client gives a progress function and shows the bar itself
 """
 import json
+import logging
+import os
 import random
+import threading
 import time
 from pathlib import Path
 
-from game import Game, min_side
+from game import MAX_PLAYERS, MAX_SIDE, Game, min_side
 
-STORE = Path(__file__).with_name('simulations.json')
+STORE = Path(os.environ.get('SIM_STORE') or Path(__file__).with_name('simulations.json'))    # on fly.io: /data/simulations.json
 GAMES = 200             # random games per side
+LOCK = threading.Lock()
 TARGET_DRAW = 0.2       # the smallest side whose draw rate in random games is at most this is recommended
 
 
@@ -41,16 +45,54 @@ def candidate_sides(n, z):
     base = min_side(n, z)
     return range(max(z, base - 2), base + 4)
 
+def valid_entry(key, value):
+    """
+        A key is "n,z,side" with integers inside the limits of the game, a value is {games, draws} with 0 <= draws <= games <= GAMES
+    """
+    try:
+        n, z, side = (int(part) for part in key.split(','))
+        games, draws = value['games'], value['draws']
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return False
+    if key != "%d,%d,%d" % (n, z, side) or set(value) != {'games', 'draws'}:
+        return False
+    if not all(type(number) is int for number in (games, draws)):
+        return False
+    return 2 <= n <= MAX_PLAYERS and 3 <= z <= side <= MAX_SIDE and 0 <= draws <= games <= GAMES
+
+def clean(data):
+    """
+        Keeps the valid entries, logs and drops the rest
+    """
+    if not isinstance(data, dict):
+        logging.warning("simulations: content is not an object, ignored")
+        return {}
+    good = {}
+    for key, value in data.items():
+        if valid_entry(key, value):
+            good[key] = value
+        else:
+            logging.warning("simulations: dropped entry %r", key)
+    return good
+
 def load(store=STORE):
     try:
-        return json.loads(Path(store).read_text(encoding='utf-8'))
+        return clean(json.loads(Path(store).read_text(encoding='utf-8')))
+    except FileNotFoundError:
+        return {}
     except (OSError, ValueError):
+        logging.warning("simulations: %s unreadable, ignored", store)
         return {}
 
 def save(data, store=STORE):
-    temporary = Path(store).with_suffix('.tmp')
-    temporary.write_text(json.dumps(data, indent=1, sort_keys=True), encoding='utf-8')
-    temporary.replace(store)
+    """
+        Validated, written to a temp file in the same folder, then replaced under a lock, so a crash leaves no half-written file
+    """
+    store = Path(store)
+    with LOCK:
+        temporary = store.with_suffix('.tmp')
+        temporary.write_text(json.dumps(clean(data), indent=1, sort_keys=True), encoding='utf-8')
+        os.replace(temporary, store)
 
 def recommend(n, z, progress=None, store=STORE):
     """

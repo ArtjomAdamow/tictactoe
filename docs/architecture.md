@@ -57,7 +57,10 @@ Optional, asked once at the start of the terminal game (default: no). `play(n, s
 `candidate_sides` (37): the default formula's side minus 2 up to plus 3 (at least `z`). `recommend(n, z, progress, store)` (55)
 plays `GAMES` (200) random games per side, small sides first, and stops at the first side whose draw rate is at most
 `TARGET_DRAW` (0.2); if none is, the side with the lowest draw rate wins. Every finished side is saved at once in
-`simulations.json` (`"n,z,side": {games, draws}`), `load` (44) and `save` (50); stored sides are never simulated again.
+`simulations.json` (`"n,z,side": {games, draws}`), `load` and `save`; stored sides are never simulated again.
+The path is `STORE`, from the env var `SIM_STORE` (default `simulations.json` next to the file). `valid_entry`/`clean` check the entries
+(`2 <= n <= MAX_PLAYERS`, `3 <= z <= side <= MAX_SIDE`, `0 <= draws <= games <= GAMES`) on load and save, drop and log the rest; `save` writes
+a temp file and `os.replace`s it under `LOCK`.
 `progress(done, total, elapsed)` is called before every game and returns `False` to cancel (result `None`, finished sides stay
 stored). It returns `(side, True if all data came from the store)`.
 

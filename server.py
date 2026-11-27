@@ -8,12 +8,11 @@ import time
 
 from flask import Flask, jsonify, request
 
-from game import MAX_PLAYERS, SYMBOL_POOL, Game, min_side
+from game import MAX_PLAYERS, MAX_SIDE, SYMBOL_POOL, Game, min_side
 
 COMPUTER_DELAY = 0.7    # seconds between two moves of computer players
 TICK = 0.1              # seconds between two looks of the background loop
 LOG_SIZE = 100          # messages kept for the clients
-MAX_SIDE = 30
 MAX_NAME = 20
 PRESENCE_TIMEOUT = 5.0  # seconds without a request until a human counts as gone
 
