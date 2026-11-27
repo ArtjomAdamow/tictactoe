@@ -342,6 +342,10 @@ def create_app(clock=time.monotonic, loop=True):
     for name in ('join', 'start', 'claim', 'queue', 'leave', 'revanche'):
         app.add_url_rule('/' + name, name, handler(getattr(server, name)), methods=['POST'])
 
+    @app.get('/')
+    def index():
+        return app.send_static_file('index.html')
+
     @app.get('/state')
     def state():
         with server.lock:

@@ -94,6 +94,7 @@ All requests run under one lock, `create_app(clock, loop)` registers them; `loop
 | `POST /queue` `{token, field}` | seated human | queued move (`null` clears) |
 | `POST /leave` `{token}` | anyone | `drop`: the seat becomes a computer, the host moves on, nobody left pauses the game; the body is read as JSON whatever the content type, so `navigator.sendBeacon` on tab close works |
 | `POST /revanche` `{token}` | host | restart after `over` |
+| `GET /` | anyone | `static/index.html` |
 | `GET /state?token=` | anyone | people, setup, last messages, board, scores, order, `time_left`, queue, `version` |
 
 `tick()` (loop every `TICK` 0.1 s): one `Game.step` when due; moves of computers and AFK humans keep `COMPUTER_DELAY` (0.7 s),
@@ -102,6 +103,19 @@ Errors are `{"error": ...}` with status 400 or 403.
 Presence: every request with a token and `GET /state` set `seen`; `tick()` drops everybody silent for more than `PRESENCE_TIMEOUT` (5 s)
 with `drop`, the same as `/leave`. A reconnecting token gets no host role back. `dropped` is cleared when `new: true` replaces the game.
 Clients must poll `/state` with their token (about once per second) to stay present.
+
+## Browser client (`static/index.html`)
+
+One file, vanilla JS, served by `GET /` (`index` in `server.py`). Not in `tools/index.yaml` (no Python).
+Polls `GET /state?token=` every second (this keeps the human present) and redraws from the answer; the token lives in `localStorage` (`ttt-token`).
+An answer for a token that is no longer the current one is ignored (a poll started before the join must not log the player out).
+Sections: join form (no token or unknown token), players list with name/symbol editing (only without a seat), host box (computers, z, side,
+timeout; "Start game", or "New game" and "Revanche" when a game exists), game box (status with `time_left`, scores with AFK and queued field,
+board table in the player colors, number input for the queued move, "take over <computer>" buttons for watchers), message log, Leave.
+- The number input is always active: Enter or a click on a free field sends `POST /queue`; "Clear" sends `null`; the queued field has an outline.
+- A stored token that the server no longer knows is sent once to `POST /join` (reconnect of a dropped human); if that fails the join form shows.
+- The "join as host / new game" choice after a pause: the host without a seat sees the take-over buttons and "New game" together.
+- Not done: no `sendBeacon` on tab close (the 5 s presence timeout drops the human, so a reload keeps the seat); no automated browser test.
 
 ## Test tool
 

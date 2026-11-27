@@ -119,10 +119,14 @@ async function call(path, body) {
 }
 
 async function poll() {
+  const asked = token;
+  let state;
   try {
-    const answer = await fetch("/state?token=" + encodeURIComponent(token || ""));
-    last = await answer.json();
+    const answer = await fetch("/state?token=" + encodeURIComponent(asked || ""));
+    state = await answer.json();
   } catch (e) { showError("Server not reachable."); return; }
+  if (asked !== token) return;                          // the token changed while the request was running: the answer is stale
+  last = state;
   render();
 }
 
